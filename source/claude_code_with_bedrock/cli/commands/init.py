@@ -303,6 +303,7 @@ class InitCommand(Command):
                 instruction=(
                     "(e.g., company.okta.com, company.auth0.com, "
                     "login.microsoftonline.com/{tenant-id}/v2.0, "
+                    "accounts.google.com, "
                     "my-app.auth.us-east-1.amazoncognito.com, or "
                     "my-app.auth-fips.us-gov-west-1.amazoncognito.com for GovCloud)"
                 ),
@@ -344,6 +345,8 @@ class InitCommand(Command):
                         provider_type = "azure"
                     elif hostname_lower.endswith(".windows.net") or hostname_lower == "windows.net":
                         provider_type = "azure"
+                    elif hostname_lower == "accounts.google.com":
+                        provider_type = "google"
                     elif hostname_lower.endswith(".amazoncognito.com") or hostname_lower == "amazoncognito.com":
                         provider_type = "cognito"
                     elif hostname_lower.startswith("cognito-idp.") and ".amazonaws.com" in hostname_lower:
@@ -388,6 +391,20 @@ class InitCommand(Command):
                 if not cognito_user_pool_id:
                     return None
 
+            # For Google, ask for the Workspace hosted domain
+            google_hosted_domain = None
+            if provider_type == "google":
+                google_hosted_domain = questionary.text(
+                    "Enter your Google Workspace domain:",
+                    validate=lambda x: bool(x and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$", x))
+                    or "Must be a valid domain (e.g., yourcompany.com)",
+                    instruction="(e.g., yourcompany.com)",
+                    default=config.get("google_hosted_domain", ""),
+                ).ask()
+
+                if not google_hosted_domain:
+                    return None
+
             client_id = questionary.text(
                 "Enter your OIDC Client ID:",
                 validate=lambda x: bool(x and len(x) >= 10) or "Client ID must be at least 10 characters",
@@ -422,6 +439,8 @@ class InitCommand(Command):
             config["okta"]["client_id"] = client_id
             config["credential_storage"] = credential_storage
             config["provider_type"] = provider_type
+            if google_hosted_domain:
+                config["google_hosted_domain"] = google_hosted_domain
             if cognito_user_pool_id:
                 config["cognito_user_pool_id"] = cognito_user_pool_id
 
@@ -767,6 +786,50 @@ class InitCommand(Command):
 
         if enable_codebuild:
             console.print("[green]✓[/green] CodeBuild for Windows builds will be deployed")
+
+        # macOS CodeBuild support (for building macOS binaries from Linux)
+        _MACOS_CODEBUILD_REGIONS = {"us-east-1", "us-east-2", "us-west-2", "eu-west-1", "eu-central-1"}
+        console.print("\n[bold]macOS Build Support[/bold]")
+        console.print("Build macOS binaries using AWS CodeBuild (required when packaging from Linux)")
+        console.print(
+            f"[dim]Supported regions: {', '.join(sorted(_MACOS_CODEBUILD_REGIONS))}[/dim]"
+        )
+        enable_codebuild_macos = questionary.confirm(
+            "Enable macOS builds via CodeBuild?",
+            default=config.get("codebuild_macos", {}).get("enabled", False),
+        ).ask()
+
+        if "codebuild_macos" not in config:
+            config["codebuild_macos"] = {}
+        config["codebuild_macos"]["enabled"] = enable_codebuild_macos
+
+        if enable_codebuild_macos:
+            aws_region = config.get("aws", {}).get("region", "")
+            saved_macos_region = config.get("codebuild_macos", {}).get("region")
+
+            # Suggest a supported region: prefer the saved value, then the main region if supported,
+            # then fall back to us-east-1
+            if saved_macos_region:
+                default_macos_region = saved_macos_region
+            elif aws_region in _MACOS_CODEBUILD_REGIONS:
+                default_macos_region = aws_region
+            else:
+                default_macos_region = "us-east-1"
+
+            if aws_region not in _MACOS_CODEBUILD_REGIONS:
+                console.print(
+                    f"[yellow]  Note: {aws_region} does not support MAC_ARM fleets. "
+                    f"The CodeBuild stack will be deployed to a separate region.[/yellow]"
+                )
+
+            codebuild_macos_region = questionary.select(
+                "Region for macOS CodeBuild fleet:",
+                choices=sorted(_MACOS_CODEBUILD_REGIONS),
+                default=default_macos_region,
+            ).ask()
+
+            config["codebuild_macos"]["region"] = codebuild_macos_region
+            console.print(f"[green]✓[/green] macOS CodeBuild will be deployed to {codebuild_macos_region}")
 
         # Package distribution support
         console.print("\n[bold]Package Distribution[/bold]")
@@ -1465,9 +1528,12 @@ class InitCommand(Command):
             selected_source_region=config_data["aws"].get("selected_source_region"),
             provider_type=config_data.get("provider_type"),
             cognito_user_pool_id=config_data.get("cognito_user_pool_id"),
+            google_hosted_domain=config_data.get("google_hosted_domain"),
             federation_type=config_data.get("federation_type", "cognito"),
             max_session_duration=config_data.get("max_session_duration", 28800),
             enable_codebuild=config_data.get("codebuild", {}).get("enabled", False),
+            enable_codebuild_macos=config_data.get("codebuild_macos", {}).get("enabled", False),
+            codebuild_macos_region=config_data.get("codebuild_macos", {}).get("region"),
             enable_distribution=config_data.get("distribution", {}).get("enabled", False),
             distribution_type=config_data.get("distribution", {}).get("type"),
             distribution_idp_provider=config_data.get("distribution", {}).get("idp_provider"),
@@ -1765,6 +1831,12 @@ class InitCommand(Command):
             # Add CodeBuild configuration if present
             if hasattr(profile, "enable_codebuild"):
                 existing_config["codebuild"] = {"enabled": profile.enable_codebuild}
+
+            if hasattr(profile, "enable_codebuild_macos"):
+                existing_config["codebuild_macos"] = {
+                    "enabled": profile.enable_codebuild_macos,
+                    "region": profile.codebuild_macos_region,
+                }
 
             # Add distribution configuration if present
             if hasattr(profile, "enable_distribution"):
