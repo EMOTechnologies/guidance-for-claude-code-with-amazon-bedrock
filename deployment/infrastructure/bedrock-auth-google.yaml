@@ -19,7 +19,7 @@ Parameters:
   HostedDomain:
     Type: String
     Description: Google Workspace domain to restrict access to (e.g., yourcompany.com)
-    AllowedPattern: '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$'
+    AllowedPattern: '^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9][a-zA-Z0-9-]*)*\.[a-zA-Z]{2,}$'
     ConstraintDescription: Must be a valid domain name (e.g., yourcompany.com)
 
   IdentityPoolName:

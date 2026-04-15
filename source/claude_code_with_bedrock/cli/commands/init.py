@@ -396,7 +396,7 @@ class InitCommand(Command):
             if provider_type == "google":
                 google_hosted_domain = questionary.text(
                     "Enter your Google Workspace domain:",
-                    validate=lambda x: bool(x and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$", x))
+                    validate=lambda x: bool(x and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9][a-zA-Z0-9-]*)*\.[a-zA-Z]{2,}$", x))
                     or "Must be a valid domain (e.g., yourcompany.com)",
                     instruction="(e.g., yourcompany.com)",
                     default=config.get("google_hosted_domain", ""),
