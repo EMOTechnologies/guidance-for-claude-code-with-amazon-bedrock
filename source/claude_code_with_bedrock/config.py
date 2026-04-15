@@ -35,7 +35,7 @@ class Profile:
     selected_source_region: str | None = None  # User-selected source region for AWS config and Claude Code settings
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    provider_type: str | None = None  # Auto-detected: "okta", "auth0", "azure", "cognito"
+    provider_type: str | None = None  # Auto-detected: "okta", "auth0", "azure", "cognito", "google"
     cognito_user_pool_id: str | None = None  # Only for Cognito User Pool providers
     google_hosted_domain: str | None = None  # Google Workspace domain for hd claim enforcement (e.g., "yourcompany.com")
     enable_codebuild: bool = False  # Enable CodeBuild for Windows binary builds
