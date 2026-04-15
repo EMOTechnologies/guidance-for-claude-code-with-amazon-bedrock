@@ -37,7 +37,10 @@ class Profile:
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     provider_type: str | None = None  # Auto-detected: "okta", "auth0", "azure", "cognito"
     cognito_user_pool_id: str | None = None  # Only for Cognito User Pool providers
+    google_hosted_domain: str | None = None  # Google Workspace domain for hd claim enforcement (e.g., "yourcompany.com")
     enable_codebuild: bool = False  # Enable CodeBuild for Windows binary builds
+    enable_codebuild_macos: bool = False  # Enable CodeBuild for macOS binary builds (required when packaging from Linux)
+    codebuild_macos_region: str | None = None  # Region for macOS CodeBuild fleet (must be one of the 5 MAC_ARM regions)
     enable_distribution: bool = False  # Enable package distribution features (legacy, use distribution_type)
 
     # Distribution platform configuration
@@ -136,6 +139,8 @@ class Profile:
                             data["provider_type"] = "azure"
                         elif hostname_lower.endswith(".windows.net") or hostname_lower == "windows.net":
                             data["provider_type"] = "azure"
+                        elif hostname_lower == "accounts.google.com":
+                            data["provider_type"] = "google"
                         elif hostname_lower.endswith(".amazoncognito.com") or hostname_lower == "amazoncognito.com":
                             data["provider_type"] = "cognito"
                 except Exception:
