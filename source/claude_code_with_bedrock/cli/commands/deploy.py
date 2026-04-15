@@ -430,6 +430,14 @@ class DeployCommand(Command):
                         ]
                     )
                 elif provider_type == "google":
+                    if not profile.google_hosted_domain:
+                        console.print(
+                            "[red]Error: google_hosted_domain is required for Google provider deployments.[/red]"
+                        )
+                        console.print(
+                            "Run [bold cyan]ccwb init[/bold cyan] to configure your Google Workspace hosted domain."
+                        )
+                        return 1
                     params.extend(
                         [
                             f"GoogleClientId={profile.client_id}",
