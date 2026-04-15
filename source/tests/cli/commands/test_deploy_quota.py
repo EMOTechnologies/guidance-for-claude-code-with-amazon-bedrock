@@ -101,3 +101,32 @@ class TestDeployQuotaCommand:
             key, value = param.split("=")
             assert key in ["MonthlyTokenLimit", "WarningThreshold80", "WarningThreshold90"]
             assert int(value) > 0
+
+
+class TestGoogleTemplateDispatch:
+    """Test that the Google provider type dispatches to the correct template."""
+
+    def test_google_in_template_map(self):
+        """Verify 'google' is a key in the deploy template_map."""
+        from pathlib import Path
+
+        deploy_src = (
+            Path(__file__).parent.parent.parent.parent
+            / "claude_code_with_bedrock/cli/commands/deploy.py"
+        ).read_text()
+
+        assert '"google": "bedrock-auth-google.yaml"' in deploy_src, (
+            "deploy.py must map provider_type 'google' to 'bedrock-auth-google.yaml'"
+        )
+
+    def test_google_params_branch_present(self):
+        """Verify GoogleClientId and HostedDomain params are set for Google provider."""
+        from pathlib import Path
+
+        deploy_src = (
+            Path(__file__).parent.parent.parent.parent
+            / "claude_code_with_bedrock/cli/commands/deploy.py"
+        ).read_text()
+
+        assert "GoogleClientId=" in deploy_src, "deploy.py must set GoogleClientId param"
+        assert "HostedDomain=" in deploy_src, "deploy.py must set HostedDomain param"

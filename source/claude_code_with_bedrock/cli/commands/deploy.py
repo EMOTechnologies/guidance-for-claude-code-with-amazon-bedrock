@@ -145,10 +145,16 @@ class DeployCommand(Command):
                 else:
                     console.print("[yellow]CodeBuild is not enabled in your configuration.[/yellow]")
                     return 1
+            elif stack_arg == "codebuild-macos":
+                if getattr(profile, "enable_codebuild_macos", False):
+                    stacks_to_deploy.append(("codebuild-macos", "CodeBuild for macOS binary builds"))
+                else:
+                    console.print("[yellow]macOS CodeBuild is not enabled in your configuration.[/yellow]")
+                    return 1
             else:
                 console.print(f"[red]Unknown stack: {stack_arg}[/red]")
                 console.print(
-                    "Valid stacks: auth, distribution, networking, monitoring, dashboard, analytics, quota, codebuild\n"
+                    "Valid stacks: auth, distribution, networking, monitoring, dashboard, analytics, quota, codebuild, codebuild-macos\n"
                 )
                 console.print("[dim]Tip: Use 'ccwb deploy' without arguments to deploy all enabled stacks.[/dim]")
                 console.print("[dim]Use 'ccwb deploy quota' for quota-specific updates or late enablement.[/dim]")
@@ -178,6 +184,8 @@ class DeployCommand(Command):
             # Check if CodeBuild is enabled
             if getattr(profile, "enable_codebuild", False):
                 stacks_to_deploy.append(("codebuild", "CodeBuild for Windows binary builds"))
+            if getattr(profile, "enable_codebuild_macos", False):
+                stacks_to_deploy.append(("codebuild-macos", "CodeBuild for macOS binary builds"))
 
         # Initialize CloudFormation manager
         cf_manager = CloudFormationManager(region=profile.aws_region)
@@ -283,17 +291,19 @@ class DeployCommand(Command):
         ) as progress:
             # Common deployment function
             def deploy_with_cf(
-                template_path, stack_name, params, capabilities=None, task_description="Deploying stack..."
+                template_path, stack_name, params, capabilities=None, task_description="Deploying stack...",
+                cf_manager_override=None,
             ):
                 """Helper function to deploy a stack with CloudFormation manager."""
                 task = progress.add_task(task_description, total=None)
+                _cf = cf_manager_override if cf_manager_override is not None else cf_manager
 
                 try:
                     # Convert parameters to boto3 format
                     boto3_params = self._convert_params_to_boto3(params) if params else None
 
                     # Deploy stack
-                    result = cf_manager.deploy_stack(
+                    result = _cf.deploy_stack(
                         stack_name=stack_name,
                         template_path=template_path,
                         parameters=boto3_params,
@@ -347,6 +357,7 @@ class DeployCommand(Command):
                     "auth0": "bedrock-auth-auth0.yaml",
                     "azure": "bedrock-auth-azure.yaml",
                     "cognito": "bedrock-auth-cognito-pool.yaml",
+                    "google": "bedrock-auth-google.yaml",
                 }
 
                 template_file = template_map.get(provider_type, "bedrock-auth-okta.yaml")
@@ -416,6 +427,21 @@ class DeployCommand(Command):
                             f"CognitoUserPoolId={profile.cognito_user_pool_id}",
                             f"CognitoUserPoolClientId={profile.client_id}",
                             f"CognitoUserPoolDomain={cognito_domain}",
+                        ]
+                    )
+                elif provider_type == "google":
+                    if not profile.google_hosted_domain:
+                        console.print(
+                            "[red]Error: google_hosted_domain is required for Google provider deployments.[/red]"
+                        )
+                        console.print(
+                            "Run [bold cyan]ccwb init[/bold cyan] to configure your Google Workspace hosted domain."
+                        )
+                        return 1
+                    params.extend(
+                        [
+                            f"GoogleClientId={profile.client_id}",
+                            f"HostedDomain={profile.google_hosted_domain}",
                         ]
                     )
 
@@ -866,6 +892,32 @@ class DeployCommand(Command):
                 params = [f"ProjectNamePrefix={profile.identity_pool_name}"]
                 return deploy_with_cf(
                     template, stack_name, params, task_description="Deploying CodeBuild for Windows builds..."
+                )
+
+            elif stack_type == "codebuild-macos":
+                _MACOS_CODEBUILD_REGIONS = {"us-east-1", "us-east-2", "us-west-2", "eu-west-1", "eu-central-1"}
+                macos_region = getattr(profile, "codebuild_macos_region", None) or profile.aws_region
+                if macos_region not in _MACOS_CODEBUILD_REGIONS:
+                    console.print(
+                        f"[red]macOS CodeBuild (MAC_ARM fleet) is not available in {macos_region}.[/red]"
+                    )
+                    console.print(
+                        f"Supported regions: {', '.join(sorted(_MACOS_CODEBUILD_REGIONS))}"
+                    )
+                    console.print("Run 'poetry run ccwb init' to set a supported macOS CodeBuild region.")
+                    return 1
+                template = project_root / "deployment" / "infrastructure" / "codebuild-macos.yaml"
+                stack_name = profile.stack_names.get(
+                    "codebuild-macos", f"{profile.identity_pool_name}-codebuild-macos"
+                )
+                params = [f"ProjectNamePrefix={profile.identity_pool_name}"]
+                # Deploy to the macOS-specific region, which may differ from the main deployment region
+                macos_cf_manager = CloudFormationManager(region=macos_region)
+                console.print(f"[dim]Deploying macOS CodeBuild stack to {macos_region}[/dim]")
+                return deploy_with_cf(
+                    template, stack_name, params,
+                    task_description=f"Deploying CodeBuild for macOS builds ({macos_region})...",
+                    cf_manager_override=macos_cf_manager,
                 )
 
             else:

@@ -192,3 +192,75 @@ class TestConfigManager:
                         assert profile is not None
                         # Should auto-detect US profile from regions
                         assert profile.cross_region_profile == "us"
+
+
+class TestGoogleProviderSupport:
+    """Tests for Google Workspace provider type support."""
+
+    def test_google_hosted_domain_field_exists(self):
+        """Test that google_hosted_domain field is available in Profile."""
+        profile = Profile(
+            name="test",
+            provider_domain="accounts.google.com",
+            client_id="123456789-abc.apps.googleusercontent.com",
+            credential_storage="session",
+            aws_region="us-east-1",
+            identity_pool_name="test-pool",
+            google_hosted_domain="mycompany.com",
+        )
+
+        assert profile.google_hosted_domain == "mycompany.com"
+        assert "google_hosted_domain" in profile.to_dict()
+
+    def test_google_hosted_domain_defaults_to_none(self):
+        """Test that google_hosted_domain defaults to None."""
+        profile = Profile(
+            name="test",
+            provider_domain="test.okta.com",
+            client_id="test-client",
+            credential_storage="session",
+            aws_region="us-east-1",
+            identity_pool_name="test-pool",
+        )
+
+        assert profile.google_hosted_domain is None
+
+    def test_from_dict_detects_google_provider(self):
+        """Test that accounts.google.com is auto-detected as google provider type."""
+        data = {
+            "name": "test",
+            "provider_domain": "accounts.google.com",
+            "client_id": "123456789-abc.apps.googleusercontent.com",
+            "credential_storage": "session",
+            "aws_region": "us-east-1",
+            "identity_pool_name": "test-pool",
+            "allowed_bedrock_regions": ["us-east-1"],
+            "monitoring_enabled": True,
+            "analytics_enabled": True,
+            "google_hosted_domain": "mycompany.com",
+        }
+
+        profile = Profile.from_dict(data)
+
+        assert profile.provider_type == "google"
+        assert profile.google_hosted_domain == "mycompany.com"
+
+    def test_from_dict_preserves_google_hosted_domain(self):
+        """Test that google_hosted_domain is preserved through from_dict round-trip."""
+        data = {
+            "name": "test",
+            "provider_domain": "accounts.google.com",
+            "client_id": "123456789-abc.apps.googleusercontent.com",
+            "credential_storage": "session",
+            "aws_region": "us-east-1",
+            "identity_pool_name": "test-pool",
+            "allowed_bedrock_regions": ["us-east-1"],
+            "monitoring_enabled": True,
+            "analytics_enabled": True,
+            "provider_type": "google",
+            "google_hosted_domain": "acme.com",
+        }
+
+        profile = Profile.from_dict(data)
+
+        assert profile.google_hosted_domain == "acme.com"
