@@ -224,7 +224,7 @@ class TestURLValidationSecurity:
 
         for domain in attack_domains:
             result = detect_provider_type_secure(domain)
-            assert result != "google", f"Should not detect as google: {domain}"
+            assert result == "oidc", f"Should return 'oidc' for attack domain: {domain}"
 
 
 class TestCredentialSanitization:
