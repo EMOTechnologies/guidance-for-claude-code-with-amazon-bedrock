@@ -19,7 +19,7 @@ Parameters:
   HostedDomain:
     Type: String
     Description: Google Workspace domain to restrict access to (e.g., yourcompany.com)
-    AllowedPattern: '^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$'
+    AllowedPattern: '^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$'
     ConstraintDescription: Must be a valid domain name (e.g., yourcompany.com)
 
   IdentityPoolName:
@@ -55,8 +55,12 @@ Conditions:
   MonitoringEnabled: !Equals [!Ref EnableMonitoring, 'true']
   IsGovCloudWest: !Equals [!Ref 'AWS::Region', 'us-gov-west-1']
   IsGovCloudEast: !Equals [!Ref 'AWS::Region', 'us-gov-east-1']
+  IsGovCloud: !Or [!Condition IsGovCloudWest, !Condition IsGovCloudEast]
 
 Resources:
+  # ===============================================
+  # OIDC Provider for Google
+  # ===============================================
   GoogleOIDCProvider:
     Type: AWS::IAM::OIDCProvider
     Properties:
@@ -71,6 +75,9 @@ Resources:
         - Key: Provider
           Value: Google
 
+  # ===============================================
+  # Bedrock Access Policy (Shared)
+  # ===============================================
   BedrockAccessPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -139,13 +146,16 @@ Resources:
                     - 'AWS/Bedrock'
             - !Ref 'AWS::NoValue'
 
+  # ===============================================
+  # Direct IAM Resources (when FederationType=direct)
+  # ===============================================
   DirectIAMRole:
     Type: AWS::IAM::Role
     Condition: UseDirectIAM
     Properties:
       RoleName: !Ref FederatedRoleName
       Description: Direct IAM role for Google Workspace users accessing Bedrock
-      MaxSessionDuration: 43200
+      MaxSessionDuration: 43200  # 12 hours
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -169,9 +179,16 @@ Resources:
         - Key: FederationType
           Value: direct
 
+  # ===============================================
+  # Cognito Identity Pool Resources (when FederationType=cognito)
+  # ===============================================
   CognitoIdentityPool:
     Type: AWS::Cognito::IdentityPool
     Condition: UseCognitoIdentity
+    # Note: The hosted domain (hd) restriction is enforced in Direct IAM mode via trust
+    # policy conditions. In Cognito mode, Cognito validates the OIDC token but does not
+    # filter on the hd claim — ensure your Google OAuth app is restricted to your
+    # Workspace domain in the Google Cloud Console as an additional control.
     Properties:
       IdentityPoolName: !Ref IdentityPoolName
       AllowUnauthenticatedIdentities: false
@@ -295,6 +312,9 @@ Resources:
         UserId: sub
         UserName: name
 
+  # ===============================================
+  # Optional Monitoring Resources
+  # ===============================================
   BedrockAccessLogGroup:
     Type: AWS::Logs::LogGroup
     Condition: MonitoringEnabled
