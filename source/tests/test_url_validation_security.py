@@ -47,6 +47,8 @@ def detect_provider_type_secure(domain: str) -> str:
             return "azure"
         elif hostname_lower.endswith(".windows.net") or hostname_lower == "windows.net":
             return "azure"
+        elif hostname_lower == "accounts.google.com":
+            return "google"
         elif hostname_lower.endswith(".amazoncognito.com") or hostname_lower == "amazoncognito.com":
             return "cognito"
         else:
@@ -199,6 +201,30 @@ class TestURLValidationSecurity:
 
         for domain, expected in real_world_domains:
             assert detect_provider_type_secure(domain) == expected, f"Backward compatibility broken for {domain}"
+
+    def test_valid_google_domains(self):
+        """Test legitimate Google domains are correctly identified."""
+        valid_domains = [
+            "accounts.google.com",
+            "https://accounts.google.com",
+            "https://accounts.google.com/.well-known/openid-configuration",
+        ]
+
+        for domain in valid_domains:
+            assert detect_provider_type_secure(domain) == "google", f"Failed for {domain}"
+
+    def test_attack_google_bypass(self):
+        """Test that subdomain/path attacks against accounts.google.com are blocked."""
+        attack_domains = [
+            "accounts.google.com.evil.com",
+            "evil.com/accounts.google.com",
+            "notaccounts.google.com",
+            "https://evil.com/accounts.google.com",
+        ]
+
+        for domain in attack_domains:
+            result = detect_provider_type_secure(domain)
+            assert result != "google", f"Should not detect as google: {domain}"
 
 
 class TestCredentialSanitization:
